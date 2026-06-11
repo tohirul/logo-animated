@@ -23,7 +23,6 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
-import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import gsap from 'gsap';
 import { motion } from 'framer-motion';
 
@@ -61,29 +60,14 @@ function mountScene(canvas) {
 
   const scene = new THREE.Scene();
 
-  /* the pale sky lives in-scene (opaque canvas) so bloom composites over
-     it correctly — it mirrors the page's CSS radial-gradient background */
+  /* solid background — matches CSS, no atmospheric gradients */
   const bgCv = document.createElement('canvas');
   bgCv.width = 1024; bgCv.height = 640;
   const bg = bgCv.getContext('2d');
   bg.fillStyle = '#e9fbfa'; bg.fillRect(0, 0, 1024, 640);
-  const tint = (x, y, r, a) => {
-    const g = bg.createRadialGradient(x, y, 0, x, y, r);
-    g.addColorStop(0, `rgba(19,245,239,${a})`);
-    g.addColorStop(1, 'rgba(19,245,239,0)');
-    bg.fillStyle = g; bg.fillRect(0, 0, 1024, 640);
-  };
-  tint(0.78 * 1024, 0.42 * 640, 520, 0.10);
-  tint(0.12 * 1024, 0.90 * 640, 430, 0.08);
   const bgTex = new THREE.CanvasTexture(bgCv);
   bgTex.colorSpace = THREE.SRGBColorSpace;
   scene.background = bgTex;
-
-  /* soft studio reflections, no HDR file needed */
-  const pmrem = new THREE.PMREMGenerator(renderer);
-  const envRT = pmrem.fromScene(new RoomEnvironment(), 0.04);
-  scene.environment = envRT.texture;
-  pmrem.dispose();
 
   /* low, close, monumental */
   const camera = new THREE.PerspectiveCamera(33, 1, 0.1, 100);
@@ -96,13 +80,13 @@ function mountScene(canvas) {
   const composer = new EffectComposer(renderer);
   composer.setPixelRatio(Math.min(devicePixelRatio, 2));
   composer.addPass(new RenderPass(scene, camera));
-  const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.55, 0.7, 0.95);
+  const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.25, 0.6, 0.85);
   composer.addPass(bloom);
   composer.addPass(new OutputPass());
 
   /* ---------- lighting rig ---------- */
-  scene.add(new THREE.HemisphereLight(0xe9fbfa, 0x0c1212, 0.3));
-  const key = new THREE.DirectionalLight(0xfff2e2, 2.2);    // warm key, upper-left
+  // No HemisphereLight — creates foggy ambient gradient
+  const key = new THREE.DirectionalLight(0xfff2e2, 2.5);    // warm key, upper-left
   key.position.set(-4.5, 8.5, 4);
   key.castShadow = true;
   key.shadow.mapSize.set(2048, 2048);
@@ -112,11 +96,15 @@ function mountScene(canvas) {
   key.shadow.bias = -0.0006; key.shadow.normalBias = 0.02;
   scene.add(key);
   const fill = new THREE.DirectionalLight(0xcfeef2, 0.5);   // dim cool fill, camera side
-  fill.position.set(3, 2.5, 7.5);
+  fill.position.set(4, 3, 8);
   scene.add(fill);
   const rim = new THREE.PointLight(CYAN, 16, 30, 2);        // cyan rim, low-right
   rim.position.set(5.5, 0.8, 4.5);
   scene.add(rim);
+  /* cyan under-chip point light — only ignites at impact */
+  const underLight = new THREE.PointLight(CYAN, 0, 8, 2);
+  underLight.position.set(0, HALF + 0.15, 0);
+  scene.add(underLight);
 
   const rig = new THREE.Group();
   rig.rotation.z = 0.1;                        // top side tilted left
@@ -127,7 +115,7 @@ function mountScene(canvas) {
 
   /* matte soot-black body — form drawn by light alone, no edge lines */
   const cubeMat = new THREE.MeshStandardMaterial({
-    color: 0x0a0d0f, roughness: 0.55, metalness: 0.25, envMapIntensity: 0.35,
+    color: 0x0a0d0f, roughness: 0.55, metalness: 0.25, envMapIntensity: 0,
   });
   const cube = new THREE.Mesh(new THREE.BoxGeometry(HALF * 2, HALF * 2, HALF * 2), cubeMat);
   cube.castShadow = cube.receiveShadow = true;
@@ -159,9 +147,9 @@ function mountScene(canvas) {
     const d = Math.hypot(x, z);
     gen.push({
       x, z, sx, sz, d, rest, peak,
-      tx: (rand() - 0.5) * (zone === 0 ? 0.105 : 0.07), // ≤ ~±3° wave tilt
-      tz: (rand() - 0.5) * (zone === 0 ? 0.105 : 0.07),
-      delay: Math.max(0, (d - PAD_R) / WAVE_SPEED) + rand() * 0.16,
+      tx: (rand() - 0.5) * 0.05, // subtle tilt ±~3°
+      tz: (rand() - 0.5) * 0.05,
+      delay: Math.max(0, (d - PAD_R) / WAVE_SPEED) + rand() * 0.08, // cleaner wavefront, less jitter
       live: zone < 2 && rand() < (zone === 0 ? 0.06 : 0.04),
       shade: pickShade(),
       fq: 1.6 + rand() * 2.6,
@@ -175,7 +163,7 @@ function mountScene(canvas) {
     if (!(nearPad && depth < 2) && rand() < stop) {
       if (Math.hypot(cx, cz) < PAD_R + size * 0.6) return;    // carve the socket
       const g = size * (0.88 + rand() * 0.04);                // 8–12% groove gap
-      addVoxel(cx, cz, g, g, 0.05 + rand() * 0.02, 0.08 + rand() * 0.2, 0);
+      addVoxel(cx, cz, g, g, 0.01 + rand() * 0.01, 0.05 + rand() * 0.07, 0);
       return;
     }
     const q = size / 4;
@@ -198,9 +186,9 @@ function mountScene(canvas) {
       p += seg;
       if (zone === 2 && rand() < 0.42) continue;              // sparse silhouette band
       const g = 0.9 + rand() * 0.04;
-      const hero = rand() < (zone === 1 ? 0.1 : 0.08);
-      const peak = hero ? 0.55 + rand() * 0.15 : 0.2 + rand() * (zone === 1 ? 0.25 : 0.3);
-      const rest = zone === 1 ? 0.11 + rand() * 0.02 : 0.012 + rand() * 0.008;
+      // All voxels (inner, border, perimeter) identical height
+      const peak = 0.03 + rand() * 0.05;
+      const rest = 0.01 + rand() * 0.01;
       addVoxel(cx, cz, (horizontal ? seg : width) * g, (horizontal ? width : seg) * g, rest, peak, zone);
     }
   };
@@ -236,7 +224,7 @@ function mountScene(canvas) {
   boxGeo.translate(0, 0.5, 0); // pivot at the base so height scaling grows upward
 
   const darkMat = new THREE.MeshStandardMaterial({
-    color: 0xffffff, roughness: 0.52, metalness: 0.22, envMapIntensity: 0.35,
+    color: 0xffffff, roughness: 0.52, metalness: 0.22, envMapIntensity: 0,
   });
   const darkMesh = new THREE.InstancedMesh(boxGeo, darkMat, darkN);
   darkMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
@@ -248,7 +236,7 @@ function mountScene(canvas) {
   /* live tiles: per-instance grayscale drives the cyan emissive */
   const liveMat = new THREE.MeshStandardMaterial({
     color: 0x0c1216, roughness: 0.45, metalness: 0.2,
-    emissive: CYAN, emissiveIntensity: 1, envMapIntensity: 0.3,
+    emissive: CYAN, emissiveIntensity: 1, envMapIntensity: 0,
   });
   liveMat.onBeforeCompile = (s) => {
     s.fragmentShader = s.fragmentShader
@@ -270,7 +258,7 @@ function mountScene(canvas) {
      plus a pad-centred falloff glow while docked                       */
   let floorU = null;
   const floorMat = new THREE.MeshStandardMaterial({
-    color: 0x05080a, roughness: 0.6, metalness: 0.1, envMapIntensity: 0.25,
+    color: 0x05080a, roughness: 0.6, metalness: 0.1, envMapIntensity: 0,
   });
   floorMat.onBeforeCompile = (s) => {
     s.uniforms.uWaveR = { value: 0 };
@@ -299,21 +287,21 @@ function mountScene(canvas) {
 
   /* ---------- landing socket: recessed pad + emissive cyan rings ---------- */
   const padMat = new THREE.MeshStandardMaterial({
-    color: 0x07090b, roughness: 0.5, metalness: 0.3, envMapIntensity: 0.3,
+    color: 0x07090b, roughness: 0.5, metalness: 0.3, envMapIntensity: 0,
   });
   const pad = new THREE.Mesh(new THREE.CylinderGeometry(PAD_R, PAD_R, 0.02, 48), padMat);
   pad.position.y = HALF - 0.002;
   pad.receiveShadow = true;
   cubeG.add(pad);
   const ringMat = new THREE.MeshStandardMaterial({
-    color: 0x041212, emissive: CYAN, emissiveIntensity: 0.25, roughness: 0.4, metalness: 0.1,
+    color: 0x041212, emissive: CYAN, emissiveIntensity: 0.25, roughness: 0.4, metalness: 0.1, envMapIntensity: 0,
   });
   const ring = new THREE.Mesh(new THREE.TorusGeometry(PAD_R + 0.02, 0.013, 10, 72), ringMat);
   ring.rotation.x = -Math.PI / 2;
   ring.position.y = HALF + 0.022;
   cubeG.add(ring);
   const ring2Mat = new THREE.MeshStandardMaterial({
-    color: 0x06090a, emissive: CYAN, emissiveIntensity: 0.1, roughness: 0.5,
+    color: 0x06090a, emissive: CYAN, emissiveIntensity: 0.1, roughness: 0.5, envMapIntensity: 0,
   });
   const ring2 = new THREE.Mesh(new THREE.RingGeometry(PAD_R - 0.08, PAD_R - 0.05, 64), ring2Mat);
   ring2.rotation.x = -Math.PI / 2;
@@ -358,7 +346,7 @@ function mountScene(canvas) {
      disc r=1.0 · ring 0.46→0.64 · lens hh=0.67 hw≈0.095 · ellipse 0.32×0.106 */
   const matCyan = new THREE.MeshStandardMaterial({
     color: CYAN, roughness: 0.32, metalness: 0.05,
-    emissive: 0x07c9c4, emissiveIntensity: 0.55, envMapIntensity: 0.5,
+    emissive: 0x07c9c4, emissiveIntensity: 0.55, envMapIntensity: 0,
   });
   /* faint cyan fresnel rim so the disc pops against the pale sky */
   matCyan.onBeforeCompile = (s) => {
@@ -368,7 +356,7 @@ function mountScene(canvas) {
       'totalEmissiveRadiance += vec3(0.0065, 0.913, 0.863) * fres * 0.7;',
     ].join('\n'));
   };
-  const matInk = new THREE.MeshStandardMaterial({ color: INK, roughness: 0.5, metalness: 0.2, envMapIntensity: 0.4 });
+  const matInk = new THREE.MeshStandardMaterial({ color: INK, roughness: 0.5, metalness: 0.2, envMapIntensity: 0 });
   const logo = new THREE.Group();
   const face = new THREE.Group();                       // shapes live in XY, extrude +z
   face.add(extrude(ringShape(1.0, 0), 0.10, matCyan, 0, true));      // cyan base disc
@@ -384,25 +372,27 @@ function mountScene(canvas) {
   cubeG.add(logo);
 
   /* ---------- impact wave envelope ----------
-     power3.out rise, then a damped spring settle with a soft undershoot */
+     Smooth wave: fast rise (sin²), damped oscillating fall — travels like a ripple */
   const waveEnv = (lt) => {
     if (lt <= 0) return 0;
-    if (lt < 0.22) { const k = 1 - lt / 0.22; return 1 - k * k * k; }
-    const s = lt - 0.22;
-    const r = Math.cos(s * 9.0) * Math.exp(-s * 3.3);
-    return r < 0 ? r * 0.25 : r;
+    // Rise: 0→1 in ~0.15s (sin² for smooth acceleration)
+    if (lt < 0.15) return Math.sin((lt / 0.15) * Math.PI * 0.5) ** 2;
+    // Fall: damped oscillation ~1.5s total
+    const s = lt - 0.15;
+    const oscillation = Math.cos(s * 6.5) * Math.exp(-s * 2.2);
+    return Math.max(0, oscillation);
   };
 
   let waveAt = -1e9, kickAt = -1e9;
   const dummy = new THREE.Object3D();
   const updateVoxels = (t) => {
     const wt = t - waveAt;
-    const waving = wt > 0 && wt < 5;
+    const waving = wt > 0 && wt < 3;
     for (let i = 0; i < N; i++) {
       let e = 0;
       if (waving) {
         const lt = wt - vDelay[i];
-        e = waveEnv(lt) + 0.4 * waveEnv(lt - 0.5); // main + echo wave
+        e = waveEnv(lt); // single smooth wave, no echo
       }
       vEnv[i] = e;
       dummy.position.set(vX[i], HALF, vZ[i]);
@@ -437,11 +427,11 @@ function mountScene(canvas) {
     .to(logo.scale, { y: 1, x: 1, z: 1, duration: 0.55, ease: 'elastic.out(1,.45)' }, 2.5) // …and stretch
     .to(cubeG.position, { y: -0.04, duration: 0.1, ease: 'power2.out' }, 2.4)    // cube dips…
     .to(cubeG.position, { y: 0, duration: 1.0, ease: 'elastic.out(1,.35)' }, 2.5) // …and recovers
-    .to(st, { gutter: 1, duration: 0.9, ease: 'sine.inOut' }, 4.1)               // docked seam glow
-    .to(st, { gutter: 0, duration: 0.7, ease: 'sine.inOut' }, 6.9)               // glow fade
+    .to(st, { gutter: 1, duration: 0.9, ease: 'sine.inOut' }, 4.2)               // docked seam glow (4.2–5.1)
+    .to(st, { gutter: 0, duration: 0.7, ease: 'sine.inOut' }, 6.9)               // glow fade (6.9–7.6)
     .to(st, { h: REST_H + 0.02, duration: 0.15, ease: 'sine.inOut' }, 7.6)       // unstick
-    .to(st, { h: HOVER_H, duration: 1.85, ease: 'power3.inOut' }, 7.75)          // lift off
-    .to({}, { duration: 0.01 }, 11.0);                                           // loop length
+    .to(st, { h: HOVER_H, duration: 2.0, ease: 'power3.inOut' }, 7.6)            // lift off (7.6–9.6)
+    .to({}, { duration: 1.4 }, 9.6);                                             // hold to 11.0 loop length
   if (prefersReduced) tl.pause(5.2); // static docked composition, pad lit
 
   /* layout + parallax — large screens: bigger box, pushed to the side,
@@ -471,8 +461,8 @@ function mountScene(canvas) {
 
     // disc height + hover bob (bob fades near the surface)
     const air = THREE.MathUtils.clamp((st.h - REST_H) / (HOVER_H - REST_H), 0, 1);
-    // tilt levels out only over the last ~third of the descent
-    const tilt = THREE.MathUtils.smoothstep(air, 0.06, 0.55);
+    // tilt levels out in the last 30% of the descent (air 0.3 → 0)
+    const tilt = THREE.MathUtils.smoothstep(air, 0, 0.3);
     logo.position.y = HALF + st.h + Math.sin(t * 1.5) * 0.06 * air;
     logo.rotation.x = (0.42 + Math.sin(t * 0.8) * 0.05) * tilt;   // ~24° toward camera
     logo.rotation.z = (0.16 + Math.cos(t * 0.7) * 0.05) * tilt;
@@ -492,6 +482,8 @@ function mountScene(canvas) {
     ringMat.emissiveIntensity = padI;
     ring2Mat.emissiveIntensity = 0.1 + padI * 0.3;
     padLight.intensity = padI * 2.4;
+    // cyan under-chip light mirrors pad bloom curve
+    underLight.intensity = padI * 1.2;
 
     // seam glow: expanding wavefront with distance falloff, then breathing
     if (floorU) {
