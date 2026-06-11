@@ -1,0 +1,808 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>OGT — Web3 Launchpad</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;700;900&family=Space+Grotesk:wght@400;500;700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --bg: #e9fbfa;
+        --bg-deep: #d8f4f2;
+        --ink: #06090a;
+        --ink-soft: #3c4a49;
+        --cyan: #13f5ef;
+        --cyan-deep: #06b9b4;
+        --line: rgba(6, 9, 10, 0.14);
+      }
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        height: 100%;
+      }
+      body {
+        font-family: "Space Grotesk", sans-serif;
+        background:
+          radial-gradient(
+            1200px 800px at 78% 42%,
+            rgba(19, 245, 239, 0.1),
+            transparent 60%
+          ),
+          radial-gradient(
+            900px 700px at 12% 90%,
+            rgba(19, 245, 239, 0.08),
+            transparent 60%
+          ),
+          var(--bg);
+        color: var(--ink);
+        overflow: hidden;
+      }
+
+      /* ---------- 3D layer ---------- */
+      #scene {
+        position: fixed;
+        inset: 0;
+        display: block;
+        opacity: 0;
+        transition: opacity 0.9s ease 0.15s;
+      }
+      #scene.on {
+        opacity: 1;
+      }
+      .cube-shadow {
+        position: fixed;
+        width: 46vmin;
+        height: 12vmin;
+        border-radius: 50%;
+        left: 62%;
+        top: 74%;
+        background: radial-gradient(
+          closest-side,
+          rgba(4, 20, 20, 0.34),
+          transparent 70%
+        );
+        filter: blur(14px);
+        pointer-events: none;
+        transform: translate(-50%, -50%);
+      }
+
+      /* ---------- chrome ---------- */
+      .frame {
+        position: relative;
+        z-index: 2;
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
+        padding: 18px clamp(16px, 3vw, 40px);
+      }
+
+      nav {
+        display: flex;
+        align-items: stretch;
+        gap: 10px;
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        background: rgba(255, 255, 255, 0.45);
+        backdrop-filter: blur(8px);
+        padding: 10px 14px;
+      }
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding-right: 18px;
+        border-right: 1px solid var(--line);
+      }
+      .brand svg {
+        width: 30px;
+        height: 30px;
+      }
+      .brand b {
+        font-family: "Unbounded";
+        font-size: 13px;
+        letter-spacing: 0.06em;
+      }
+      .brand b span {
+        color: var(--cyan-deep);
+      }
+      .menu {
+        display: flex;
+        flex: 1;
+        gap: 6px;
+      }
+      .menu a {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        gap: 2px;
+        padding: 6px 14px;
+        border-radius: 10px;
+        text-decoration: none;
+        color: var(--ink);
+        border: 1px solid transparent;
+        transition: 0.25s;
+      }
+      .menu a:hover {
+        border-color: var(--line);
+        background: rgba(19, 245, 239, 0.1);
+      }
+      .menu a b {
+        font-size: 12.5px;
+        font-weight: 700;
+        letter-spacing: 0.02em;
+      }
+      .menu a i {
+        font-style: normal;
+        font-size: 10.5px;
+        color: var(--ink-soft);
+      }
+      .gear {
+        align-self: center;
+        width: 38px;
+        height: 38px;
+        border-radius: 10px;
+        border: 1px solid var(--line);
+        display: grid;
+        place-items: center;
+        background: transparent;
+        cursor: pointer;
+        transition: 0.25s;
+      }
+      .gear:hover {
+        background: rgba(19, 245, 239, 0.14);
+      }
+
+      /* ---------- hero copy ---------- */
+      .hero {
+        flex: 1;
+        display: flex;
+        align-items: center;
+      }
+      .copy {
+        max-width: 560px;
+      }
+      .wordmark {
+        font-family: "Unbounded";
+        font-weight: 900;
+        font-size: clamp(64px, 9.5vw, 138px);
+        line-height: 0.92;
+        letter-spacing: -0.015em;
+        display: flex;
+        align-items: center;
+        gap: 0.14em;
+      }
+      .wordmark .dot {
+        width: 0.16em;
+        height: 0.16em;
+        border-radius: 50%;
+        background: var(--cyan);
+        box-shadow: 0 0 18px rgba(19, 245, 239, 0.8);
+        transform: translateY(0.18em);
+      }
+      .sub {
+        margin-top: 26px;
+      }
+      .sub h2 {
+        font-size: clamp(20px, 2.2vw, 28px);
+        font-weight: 700;
+        letter-spacing: -0.01em;
+      }
+      .sub h3 {
+        font-family: "Unbounded";
+        font-weight: 700;
+        font-size: clamp(15px, 1.7vw, 21px);
+        color: var(--cyan-deep);
+        margin-top: 6px;
+        letter-spacing: 0.02em;
+      }
+      .sub p {
+        margin-top: 16px;
+        font-size: 14.5px;
+        line-height: 1.55;
+        color: var(--ink-soft);
+        max-width: 340px;
+      }
+      .socials {
+        display: flex;
+        gap: 10px;
+        margin-top: 26px;
+      }
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        border: 1.5px solid var(--ink);
+        border-radius: 999px;
+        padding: 9px 18px;
+        font-weight: 700;
+        font-size: 13px;
+        text-decoration: none;
+        color: var(--ink);
+        background: rgba(255, 255, 255, 0.5);
+        transition: 0.25s;
+      }
+      .pill:hover {
+        background: var(--ink);
+        color: var(--cyan);
+      }
+      .reveal {
+        opacity: 0;
+        transform: translateY(26px);
+      }
+
+      @media (max-width: 1024px) {
+        .menu a i {
+          display: none;
+        }
+        .hero {
+          align-items: flex-start;
+          padding-top: 6vh;
+        }
+        .copy {
+          max-width: 100%;
+        }
+        .cube-shadow {
+          left: 50%;
+          top: 78%;
+        }
+      }
+      @media (max-width: 640px) {
+        .menu {
+          display: none;
+        }
+        .brand {
+          border-right: none;
+        }
+        nav {
+          justify-content: space-between;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="scene"></canvas>
+    <div class="cube-shadow" id="cubeShadow"></div>
+
+    <div class="frame">
+      <nav class="reveal" id="nav">
+        <div class="brand">
+          <svg viewBox="0 0 100 100" aria-label="OGT logo">
+            <circle cx="50" cy="50" r="48" fill="#13f5ef" />
+            <circle cx="50" cy="50" r="31" fill="#06090a" />
+            <circle cx="50" cy="50" r="22" fill="#13f5ef" />
+            <path d="M50 15 Q63.5 50 50 85 Q36.5 50 50 15 Z" fill="#06090a" />
+            <path d="M50 18 Q59.5 50 50 82 Q40.5 50 50 18 Z" fill="#13f5ef" />
+            <ellipse cx="50" cy="50" rx="16" ry="5.4" fill="#06090a" />
+          </svg>
+          <b>OGT<span>.ONE</span></b>
+        </div>
+        <div class="menu">
+          <a href="#"><b>Launchpad</b><i>Invest with confidence</i></a>
+          <a href="#"><b>Staking</b><i>Stake smart, earn more</i></a>
+          <a href="#"><b>Game World</b><i>Find new items</i></a>
+          <a href="#"><b>More</b><i>Submit your ecosystem</i></a>
+        </div>
+        <button class="gear" aria-label="Settings">
+          <svg
+            width="17"
+            height="17"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <circle cx="12" cy="12" r="3" />
+            <path
+              d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1-1.55 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.55-1 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34h0a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.55h0a1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87v0a1.7 1.7 0 0 0 1.55 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.55 1z"
+            />
+          </svg>
+        </button>
+      </nav>
+
+      <section class="hero">
+        <div class="copy">
+          <h1 class="wordmark reveal">OGT<span class="dot"></span></h1>
+          <div class="sub">
+            <h2 class="reveal">Web3 Launchpad</h2>
+            <h3 class="reveal">Game &bull; AI &bull; RWA</h3>
+            <p class="reveal">
+              Get early access to innovative projects. Investing with
+              confidence.
+            </p>
+          </div>
+          <div class="socials">
+            <a class="pill reveal" href="#"
+              ><svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="currentColor"
+              >
+                <path
+                  d="M18.9 1.2h3.7l-8.1 9.3L24 22.8h-7.5l-5.9-7.7-6.7 7.7H.2l8.7-9.9L0 1.2h7.7l5.3 7 5.9-7zm-1.3 19.4h2L6.6 3.3h-2.2l13.2 17.3z"
+                />
+              </svg>
+              1M</a
+            >
+            <a class="pill reveal" href="#"
+              ><svg
+                width="15"
+                height="15"
+                viewBox="0 0 24 24"
+                fill="currentColor"
+              >
+                <path
+                  d="M11.94 0A12 12 0 1 0 24 12 12 12 0 0 0 11.94 0zm5.89 8.16-2 9.46c-.15.67-.55.83-1.11.52l-3.07-2.26-1.48 1.43a.77.77 0 0 1-.62.3l.22-3.13 5.7-5.15c.25-.22-.05-.34-.38-.12l-7.05 4.44-3-.95c-.66-.2-.67-.66.14-.98l11.73-4.52c.55-.2 1.03.13.92.96z"
+                />
+              </svg>
+              450K</a
+            >
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+    <script>
+      /* ================= OGT HERO SCENE (Three.js + GSAP) =================
+   Choreography (10.6s loop, mirrored from the gamefi.org screencast):
+   hover → descend → TOUCHDOWN (surface erodes into voxels, circuit
+   lines burst with flowing cyan "juice") → dwell → retract → launch
+   back up. Logo never leaves frame.
+==================================================================== */
+      (function () {
+        const CYAN = 0x13f5ef,
+          INK = 0x05080a,
+          CUBE_COL = 0x0b0e10;
+        const HALF = 1.7; // cube half size
+        const HOVER_H = 1.9,
+          REST_H = 0.1;
+        const prefersReduced = window.matchMedia(
+          "(prefers-reduced-motion: reduce)",
+        ).matches;
+
+        const canvas = document.getElementById("scene");
+        const renderer = new THREE.WebGLRenderer({
+          canvas,
+          antialias: true,
+          alpha: true,
+        });
+        renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(38, 1, 0.1, 100);
+        camera.position.set(0, 3.0, 9.4);
+        const LOOK = new THREE.Vector3(0, 0.8, 0);
+
+        /* ---------- lights ---------- */
+        scene.add(new THREE.HemisphereLight(0xeffffe, 0x0a1212, 0.95));
+        const key = new THREE.DirectionalLight(0xffffff, 0.85);
+        key.position.set(-5, 8, 5);
+        scene.add(key);
+        const rim = new THREE.PointLight(CYAN, 0.8, 30);
+        rim.position.set(6, 2.5, 5);
+        scene.add(rim);
+        const under = new THREE.PointLight(CYAN, 0, 8);
+        scene.add(under); // glows on touchdown
+
+        /* ---------- rig: leaning left, offset right ---------- */
+        const rig = new THREE.Group();
+        rig.rotation.z = 0.16; // top side tilted left
+        scene.add(rig);
+        const cubeG = new THREE.Group();
+        cubeG.rotation.y = -0.62; // show top + two faces, gamefi angle
+        rig.add(cubeG);
+
+        /* ---------- the cube (plain surfaces) ---------- */
+        const cube = new THREE.Mesh(
+          new THREE.BoxGeometry(HALF * 2, HALF * 2, HALF * 2),
+          new THREE.MeshStandardMaterial({
+            color: CUBE_COL,
+            roughness: 0.42,
+            metalness: 0.18,
+          }),
+        );
+        cubeG.add(cube);
+        const edges = new THREE.LineSegments(
+          new THREE.EdgesGeometry(cube.geometry),
+          new THREE.LineBasicMaterial({
+            color: 0x223234,
+            transparent: true,
+            opacity: 0.55,
+          }),
+        );
+        cubeG.add(edges);
+
+        /* ---------- OGT logo, rebuilt as a real extruded 3D object ----------
+     Proportions measured from logo.jpeg (R = 1):
+     disc r=1.0 · ring 0.46→0.64 · lens hh=0.67 hw≈0.095 (gap lens 0.135 hw, 0.71 hh)
+     ellipse rx=0.32 ry=0.106                                              */
+        function lensShape(hw, hh) {
+          const s = new THREE.Shape();
+          s.moveTo(0, -hh);
+          s.quadraticCurveTo(hw * 2, 0, 0, hh);
+          s.quadraticCurveTo(-hw * 2, 0, 0, -hh);
+          return s;
+        }
+        function ringShape(rOut, rIn) {
+          const s = new THREE.Shape();
+          s.absarc(0, 0, rOut, 0, Math.PI * 2, false);
+          const hole = new THREE.Path();
+          hole.absarc(0, 0, rIn, 0, Math.PI * 2, true);
+          s.holes.push(hole);
+          return s;
+        }
+        function ellipseShape(rx, ry) {
+          const s = new THREE.Shape();
+          s.absellipse(0, 0, rx, ry, 0, Math.PI * 2, false, 0);
+          return s;
+        }
+        const matCyan = new THREE.MeshStandardMaterial({
+          color: CYAN,
+          roughness: 0.32,
+          metalness: 0.05,
+          emissive: 0x07c9c4,
+          emissiveIntensity: 0.45,
+        });
+        const matInk = new THREE.MeshStandardMaterial({
+          color: INK,
+          roughness: 0.5,
+          metalness: 0.2,
+        });
+        function extrude(shape, depth, mat, z, bevel) {
+          const g = new THREE.ExtrudeGeometry(shape, {
+            depth,
+            bevelEnabled: !!bevel,
+            bevelThickness: 0.012,
+            bevelSize: 0.012,
+            bevelSegments: 2,
+            curveSegments: 48,
+          });
+          const m = new THREE.Mesh(g, mat);
+          m.position.z = z;
+          return m;
+        }
+        const logo = new THREE.Group();
+        const face = new THREE.Group(); // shapes live in XY, extrude +z
+        face.add(extrude(ringShape(1.0, 0), 0.1, matCyan, 0, true)); // cyan base disc
+        face.add(extrude(ringShape(0.64, 0.46), 0.04, matInk, 0.1)); // black ring
+        face.add(extrude(lensShape(0.135, 0.71), 0.04, matInk, 0.1)); // black gap lens
+        face.add(extrude(lensShape(0.095, 0.67), 0.055, matCyan, 0.102)); // cyan lens
+        face.add(extrude(ellipseShape(0.32, 0.106), 0.055, matInk, 0.104)); // black ellipse
+        face.rotation.x = -Math.PI / 2; // lay flat, face up
+        const SCALE = 0.92;
+        face.scale.setScalar(SCALE);
+        logo.add(face);
+        cubeG.add(logo);
+
+        /* contact shadow on the top face */
+        const shCv = document.createElement("canvas");
+        shCv.width = shCv.height = 128;
+        const sg = shCv.getContext("2d");
+        const grad = sg.createRadialGradient(64, 64, 4, 64, 64, 62);
+        grad.addColorStop(0, "rgba(0,8,8,.85)");
+        grad.addColorStop(1, "rgba(0,8,8,0)");
+        sg.fillStyle = grad;
+        sg.fillRect(0, 0, 128, 128);
+        const contact = new THREE.Mesh(
+          new THREE.PlaneGeometry(2.6, 2.6),
+          new THREE.MeshBasicMaterial({
+            map: new THREE.CanvasTexture(shCv),
+            transparent: true,
+            depthWrite: false,
+          }),
+        );
+        contact.rotation.x = -Math.PI / 2;
+        contact.position.y = HALF + 0.012;
+        cubeG.add(contact);
+
+        /* ---------- erosion voxels (top face breaks apart on touchdown) ---------- */
+        const VN = 15,
+          CELL = 0.205,
+          REGION = VN * CELL;
+        const vox = new THREE.InstancedMesh(
+          new THREE.BoxGeometry(CELL * 0.94, 1, CELL * 0.94),
+          new THREE.MeshStandardMaterial({
+            color: 0x0d1214,
+            roughness: 0.5,
+            metalness: 0.15,
+          }),
+          VN * VN,
+        );
+        vox.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+        cubeG.add(vox);
+        const vdat = [];
+        for (let i = 0; i < VN; i++)
+          for (let j = 0; j < VN; j++) {
+            const x = (i - (VN - 1) / 2) * CELL,
+              z = (j - (VN - 1) / 2) * CELL;
+            const d = Math.hypot(x, z);
+            vdat.push({
+              x,
+              z,
+              d,
+              h: 0.1 + Math.random() * 0.58,
+              fall: Math.max(0, 1 - d / 1.55),
+              ph: Math.random() * Math.PI * 2,
+            });
+          }
+        const dummy = new THREE.Object3D();
+        function updateVoxels(t, e) {
+          for (let k = 0; k < vdat.length; k++) {
+            const v = vdat[k];
+            let h =
+              e * v.h * v.fall * (1 + Math.sin(t * 2.6 + v.ph) * 0.14 * e);
+            h = Math.max(0.0001, h);
+            dummy.position.set(v.x, HALF + h / 2 - 0.002, v.z);
+            dummy.scale.set(1, h, 1);
+            dummy.rotation.y = e * Math.sin(v.ph) * 0.12;
+            dummy.updateMatrix();
+            vox.setMatrixAt(k, dummy.matrix);
+          }
+          vox.instanceMatrix.needsUpdate = true;
+          vox.visible = e > 0.003;
+        }
+        updateVoxels(0, 0);
+
+        /* ---------- circuit lines with flowing juice ---------- */
+        const lineFrag = `
+    uniform float uTime, uProg;
+    uniform vec3 uColor;
+    varying vec2 vUv;
+    void main(){
+      if(vUv.x > uProg) discard;
+      float flow = pow(smoothstep(.25,0.,abs(fract(vUv.x*2.2 - uTime*.65)-.5)-.06), 2.);
+      float head = smoothstep(.12,0.,uProg - vUv.x);
+      vec3 col = uColor * (.45 + flow*1.5 + head*1.6);
+      gl_FragColor = vec4(col, 1.);
+    }`;
+        const lineVert = `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix*modelViewMatrix*vec4(position,1.); }`;
+
+        function snap8(a) {
+          return Math.round(a / (Math.PI / 4)) * (Math.PI / 4);
+        }
+        function makePath() {
+          // circuit walk across the top face; some spill over the edge for depth
+          const pts = [];
+          const a0 = Math.random() * Math.PI * 2;
+          let x = Math.cos(a0) * 0.55,
+            z = Math.sin(a0) * 0.55;
+          pts.push(new THREE.Vector3(x * 0.3, HALF, z * 0.3));
+          pts.push(new THREE.Vector3(x, HALF, z));
+          let ang = snap8(a0);
+          const segs = 2 + ((Math.random() * 3) | 0);
+          let escaped = null;
+          for (let s = 0; s < segs && !escaped; s++) {
+            const len = 0.5 + Math.random() * 1.0;
+            let nx = x + Math.cos(ang) * len,
+              nz = z + Math.sin(ang) * len;
+            if (Math.abs(nx) > HALF || Math.abs(nz) > HALF) {
+              // clamp to edge, remember which side we fell off
+              const tx =
+                Math.abs(nx) > HALF ? (HALF * Math.sign(nx) - x) / (nx - x) : 1;
+              const tz =
+                Math.abs(nz) > HALF ? (HALF * Math.sign(nz) - z) / (nz - z) : 1;
+              const tt = Math.min(tx, tz);
+              nx = x + (nx - x) * tt;
+              nz = z + (nz - z) * tt;
+              escaped =
+                tx < tz
+                  ? { axis: "x", sign: Math.sign(nx) }
+                  : { axis: "z", sign: Math.sign(nz) };
+            }
+            pts.push(new THREE.Vector3(nx, HALF, nz));
+            x = nx;
+            z = nz;
+            ang = snap8(ang + ((Math.random() < 0.5 ? -1 : 1) * Math.PI) / 4);
+          }
+          if (escaped) {
+            // run down the side face
+            const drop = 0.9 + Math.random() * 1.5;
+            const mid = new THREE.Vector3(x, HALF - drop * 0.5, z);
+            const end = new THREE.Vector3(x, HALF - drop, z);
+            if (escaped.axis === "x") {
+              mid.z += (Math.random() - 0.5) * 0.5;
+              end.z = mid.z;
+            } else {
+              mid.x += (Math.random() - 0.5) * 0.5;
+              end.x = mid.x;
+            }
+            pts.push(mid, end);
+          }
+          // lift slightly off the surfaces
+          const n = new THREE.Vector3();
+          return pts.map((p) => {
+            n.set(0, 0, 0);
+            if (Math.abs(p.y - HALF) < 0.01) n.y = 1;
+            if (Math.abs(Math.abs(p.x) - HALF) < 0.01) n.x = Math.sign(p.x);
+            if (Math.abs(Math.abs(p.z) - HALF) < 0.01) n.z = Math.sign(p.z);
+            n.normalize();
+            return p.clone().addScaledVector(n, 0.028);
+          });
+        }
+        const LINES = 14,
+          lineStates = [],
+          lineUniforms = [];
+        const linesG = new THREE.Group();
+        cubeG.add(linesG);
+        for (let i = 0; i < LINES; i++) {
+          const curve = new THREE.CatmullRomCurve3(
+            makePath(),
+            false,
+            "catmullrom",
+            0.08,
+          );
+          const geo = new THREE.TubeGeometry(curve, 110, 0.019, 6, false);
+          const uni = {
+            uTime: { value: 0 },
+            uProg: { value: 0 },
+            uColor: { value: new THREE.Color(CYAN) },
+          };
+          const mesh = new THREE.Mesh(
+            geo,
+            new THREE.ShaderMaterial({
+              uniforms: uni,
+              vertexShader: lineVert,
+              fragmentShader: lineFrag,
+            }),
+          );
+          linesG.add(mesh);
+          lineStates.push({ p: 0 });
+          lineUniforms.push(uni);
+        }
+
+        /* ---------- master timeline ---------- */
+        const st = { h: HOVER_H, erosion: 0, shake: 0 };
+        const tl = gsap.timeline({
+          repeat: -1,
+          defaults: { overwrite: "auto" },
+        });
+        tl.to(st, { h: REST_H, duration: 1.5, ease: "power2.in" }, 0.8)
+          .to(
+            face.scale,
+            {
+              x: SCALE,
+              z: SCALE,
+              y: SCALE * 0.82,
+              duration: 0.12,
+              ease: "power2.out",
+            },
+            2.3,
+          ) // squash
+          .to(
+            face.scale,
+            { y: SCALE, duration: 0.4, ease: "elastic.out(1,.45)" },
+            2.42,
+          )
+          .to(st, { shake: 1, duration: 0.06 }, 2.3)
+          .to(st, { shake: 0, duration: 0.55, ease: "power2.out" }, 2.36)
+          .to(st, { erosion: 1, duration: 0.7, ease: "expo.out" }, 2.3)
+          .to(under, { intensity: 1.6, duration: 0.3 }, 2.3)
+          .add(
+            gsap.to(lineStates, {
+              p: 1,
+              duration: 1.0,
+              ease: "power3.out",
+              stagger: 0.055,
+            }),
+            2.4,
+          )
+          .add(
+            gsap.to(lineStates, {
+              p: 0,
+              duration: 0.65,
+              ease: "power2.in",
+              stagger: 0.035,
+            }),
+            6.0,
+          )
+          .to(under, { intensity: 0, duration: 0.6 }, 6.2)
+          .to(st, { erosion: 0, duration: 0.9, ease: "power3.inOut" }, 6.35)
+          .to(st, { h: HOVER_H, duration: 1.7, ease: "power3.out" }, 7.1) // launch
+          .to({}, { duration: 0.01 }, 10.55); // loop length
+
+        if (prefersReduced) {
+          tl.pause(4.5); // static resting composition
+        }
+
+        /* ---------- HTML reveals ---------- */
+        gsap.to(".reveal", {
+          opacity: 1,
+          y: 0,
+          duration: 0.9,
+          ease: "power3.out",
+          stagger: 0.09,
+          delay: 0.2,
+        });
+
+        /* ---------- responsive layout ---------- */
+        function layout() {
+          const w = innerWidth,
+            h = innerHeight;
+          renderer.setSize(w, h);
+          camera.aspect = w / h;
+          camera.updateProjectionMatrix();
+          if (w > 1024) {
+            rig.position.x = 2.25;
+            rig.position.y = -0.1;
+            rig.scale.setScalar(1);
+          } else if (w > 640) {
+            rig.position.x = 0;
+            rig.position.y = -0.9;
+            rig.scale.setScalar(0.85);
+          } else {
+            rig.position.x = 0;
+            rig.position.y = -1.25;
+            rig.scale.setScalar(0.66);
+          }
+        }
+        addEventListener("resize", layout);
+        layout();
+
+        /* subtle parallax */
+        let mx = 0,
+          my = 0;
+        addEventListener("pointermove", (e) => {
+          mx = e.clientX / innerWidth - 0.5;
+          my = e.clientY / innerHeight - 0.5;
+        });
+
+        /* ---------- render loop ---------- */
+        const clock = new THREE.Clock();
+        let shown = false;
+        function frame() {
+          requestAnimationFrame(frame);
+          const t = clock.getElapsedTime();
+
+          // logo height + hover bob (bob fades near the surface)
+          const air = Math.min(
+            1,
+            Math.max(0, (st.h - REST_H) / (HOVER_H - REST_H)),
+          );
+          const bob = Math.sin(t * 1.6) * 0.07 * air;
+          logo.position.y = HALF + st.h + bob;
+          logo.rotation.y = Math.sin(t * 0.55) * 0.08 * air;
+          logo.rotation.x = Math.sin(t * 0.8) * 0.025 * air;
+          logo.rotation.z = Math.cos(t * 0.7) * 0.025 * air;
+
+          // contact shadow tracks height
+          contact.material.opacity = 0.62 * (1 - air * 0.92);
+          const cs = 1.15 + air * 1.1;
+          contact.scale.set(cs, cs, 1);
+
+          under.position.set(rig.position.x, HALF * 0.5, 1.5);
+
+          updateVoxels(t, st.erosion);
+          for (let i = 0; i < LINES; i++) {
+            lineUniforms[i].uProg.value = lineStates[i].p;
+            lineUniforms[i].uTime.value = t;
+          }
+
+          // camera: micro parallax + touchdown shake
+          const shk = st.shake;
+          camera.position.x = mx * 0.45 + (Math.random() - 0.5) * 0.16 * shk;
+          camera.position.y =
+            3.0 - my * 0.35 + (Math.random() - 0.5) * 0.14 * shk;
+          camera.lookAt(LOOK);
+
+          renderer.render(scene, camera);
+          if (!shown) {
+            canvas.classList.add("on");
+            shown = true;
+          }
+        }
+        frame();
+      })();
+    </script>
+  </body>
+</html>

@@ -1,0 +1,71 @@
+/* ogt-hero.css — import once (e.g. in app/globals.css or the page) */
+.ogt-hero{
+  --bg:#e9fbfa; --ink:#06090a; --ink-soft:#3c4a49;
+  --cyan:#13f5ef; --cyan-deep:#06b9b4; --line:rgba(6,9,10,.14);
+  position:relative; height:100vh; overflow:hidden;
+  font-family:'Space Grotesk',sans-serif; color:var(--ink);
+  background:
+    radial-gradient(1200px 800px at 78% 42%, rgba(19,245,239,.10), transparent 60%),
+    radial-gradient(900px 700px at 12% 90%, rgba(19,245,239,.08), transparent 60%),
+    var(--bg);
+}
+.ogt-canvas{position:absolute; inset:0; width:100%; height:100%; display:block}
+.ogt-cube-shadow{
+  position:absolute; width:46vmin; height:12vmin; border-radius:50%;
+  left:62%; top:74%; transform:translate(-50%,-50%);
+  background:radial-gradient(closest-side, rgba(4,20,20,.34), transparent 70%);
+  filter:blur(14px); pointer-events:none;
+}
+.ogt-frame{position:relative; z-index:2; height:100%; display:flex; flex-direction:column; padding:18px clamp(16px,3vw,40px)}
+
+.ogt-nav{
+  display:flex; align-items:stretch; gap:10px; padding:10px 14px;
+  border:1px solid var(--line); border-radius:14px;
+  background:rgba(255,255,255,.45); backdrop-filter:blur(8px);
+}
+.ogt-brand{display:flex; align-items:center; gap:10px; padding-right:18px; border-right:1px solid var(--line)}
+.ogt-mini{width:30px; height:30px}
+.ogt-brand b{font-family:'Unbounded',sans-serif; font-size:13px; letter-spacing:.06em}
+.ogt-brand b span{color:var(--cyan-deep)}
+.ogt-menu{display:flex; flex:1; gap:6px}
+.ogt-menu a{
+  flex:1; display:flex; flex-direction:column; justify-content:center; gap:2px;
+  padding:6px 14px; border-radius:10px; text-decoration:none; color:var(--ink);
+  border:1px solid transparent; transition:.25s;
+}
+.ogt-menu a:hover{border-color:var(--line); background:rgba(19,245,239,.10)}
+.ogt-menu a b{font-size:12.5px; font-weight:700}
+.ogt-menu a i{font-style:normal; font-size:10.5px; color:var(--ink-soft)}
+
+.ogt-copy{flex:1; display:flex; flex-direction:column; justify-content:center; max-width:560px}
+.ogt-wordmark{
+  font-family:'Unbounded',sans-serif; font-weight:900;
+  font-size:clamp(64px,9.5vw,138px); line-height:.92; letter-spacing:-.015em;
+  display:flex; align-items:center; gap:.14em;
+}
+.ogt-dot{
+  width:.16em; height:.16em; border-radius:50%;
+  background:var(--cyan); box-shadow:0 0 18px rgba(19,245,239,.8);
+  transform:translateY(.18em);
+}
+.ogt-copy h2{margin-top:26px; font-size:clamp(20px,2.2vw,28px); font-weight:700}
+.ogt-copy h3{font-family:'Unbounded',sans-serif; font-weight:700; font-size:clamp(15px,1.7vw,21px); color:var(--cyan-deep); margin-top:6px}
+.ogt-copy p{margin-top:16px; font-size:14.5px; line-height:1.55; color:var(--ink-soft); max-width:340px}
+.ogt-socials{display:flex; gap:10px; margin-top:26px}
+.ogt-pill{
+  display:inline-flex; align-items:center; gap:8px;
+  border:1.5px solid var(--ink); border-radius:999px;
+  padding:9px 18px; font-weight:700; font-size:13px; text-decoration:none; color:var(--ink);
+  background:rgba(255,255,255,.5); transition:background .25s, color .25s;
+}
+.ogt-pill:hover{background:var(--ink); color:var(--cyan)}
+
+@media (max-width:1024px){
+  .ogt-menu a i{display:none}
+  .ogt-copy{justify-content:flex-start; padding-top:6vh; max-width:100%}
+  .ogt-cube-shadow{left:50%; top:78%}
+}
+@media (max-width:640px){
+  .ogt-menu{display:none}
+  .ogt-brand{border-right:none}
+}
