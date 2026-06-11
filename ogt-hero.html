@@ -57,22 +57,6 @@
       #scene.on {
         opacity: 1;
       }
-      .cube-shadow {
-        position: fixed;
-        width: 46vmin;
-        height: 12vmin;
-        border-radius: 50%;
-        left: 62%;
-        top: 74%;
-        background: radial-gradient(
-          closest-side,
-          rgba(4, 20, 20, 0.34),
-          transparent 70%
-        );
-        filter: blur(14px);
-        pointer-events: none;
-        transform: translate(-50%, -50%);
-      }
 
       /* ---------- chrome ---------- */
       .frame {
@@ -250,10 +234,6 @@
         .copy {
           max-width: 100%;
         }
-        .cube-shadow {
-          left: 50%;
-          top: 78%;
-        }
       }
       @media (max-width: 640px) {
         .menu {
@@ -270,7 +250,6 @@
   </head>
   <body>
     <canvas id="scene"></canvas>
-    <div class="cube-shadow" id="cubeShadow"></div>
 
     <div class="frame">
       <nav class="reveal" id="nav">
@@ -351,458 +330,720 @@
       </section>
     </div>
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
-    <script>
-      /* ================= OGT HERO SCENE (Three.js + GSAP) =================
-   Choreography (10.6s loop, mirrored from the gamefi.org screencast):
-   hover → descend → TOUCHDOWN (surface erodes into voxels, circuit
-   lines burst with flowing cyan "juice") → dwell → retract → launch
-   back up. Logo never leaves frame.
-==================================================================== */
-      (function () {
-        const CYAN = 0x13f5ef,
-          INK = 0x05080a,
-          CUBE_COL = 0x0b0e10;
-        const HALF = 1.7; // cube half size
-        const HOVER_H = 1.9,
-          REST_H = 0.1;
-        const prefersReduced = window.matchMedia(
-          "(prefers-reduced-motion: reduce)",
-        ).matches;
-
-        const canvas = document.getElementById("scene");
-        const renderer = new THREE.WebGLRenderer({
-          canvas,
-          antialias: true,
-          alpha: true,
-        });
-        renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
-
-        const scene = new THREE.Scene();
-        const camera = new THREE.PerspectiveCamera(38, 1, 0.1, 100);
-        camera.position.set(0, 3.0, 9.4);
-        const LOOK = new THREE.Vector3(0, 0.8, 0);
-
-        /* ---------- lights ---------- */
-        scene.add(new THREE.HemisphereLight(0xeffffe, 0x0a1212, 0.95));
-        const key = new THREE.DirectionalLight(0xffffff, 0.85);
-        key.position.set(-5, 8, 5);
-        scene.add(key);
-        const rim = new THREE.PointLight(CYAN, 0.8, 30);
-        rim.position.set(6, 2.5, 5);
-        scene.add(rim);
-        const under = new THREE.PointLight(CYAN, 0, 8);
-        scene.add(under); // glows on touchdown
-
-        /* ---------- rig: leaning left, offset right ---------- */
-        const rig = new THREE.Group();
-        rig.rotation.z = 0.16; // top side tilted left
-        scene.add(rig);
-        const cubeG = new THREE.Group();
-        cubeG.rotation.y = -0.62; // show top + two faces, gamefi angle
-        rig.add(cubeG);
-
-        /* ---------- the cube (plain surfaces) ---------- */
-        const cube = new THREE.Mesh(
-          new THREE.BoxGeometry(HALF * 2, HALF * 2, HALF * 2),
-          new THREE.MeshStandardMaterial({
-            color: CUBE_COL,
-            roughness: 0.42,
-            metalness: 0.18,
-          }),
-        );
-        cubeG.add(cube);
-        const edges = new THREE.LineSegments(
-          new THREE.EdgesGeometry(cube.geometry),
-          new THREE.LineBasicMaterial({
-            color: 0x223234,
-            transparent: true,
-            opacity: 0.55,
-          }),
-        );
-        cubeG.add(edges);
-
-        /* ---------- OGT logo, rebuilt as a real extruded 3D object ----------
-     Proportions measured from logo.jpeg (R = 1):
-     disc r=1.0 · ring 0.46→0.64 · lens hh=0.67 hw≈0.095 (gap lens 0.135 hw, 0.71 hh)
-     ellipse rx=0.32 ry=0.106                                              */
-        function lensShape(hw, hh) {
-          const s = new THREE.Shape();
-          s.moveTo(0, -hh);
-          s.quadraticCurveTo(hw * 2, 0, 0, hh);
-          s.quadraticCurveTo(-hw * 2, 0, 0, -hh);
-          return s;
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+          "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
         }
-        function ringShape(rOut, rIn) {
-          const s = new THREE.Shape();
-          s.absarc(0, 0, rOut, 0, Math.PI * 2, false);
+      }
+    </script>
+    <script type="module">
+      /* ================= OGT HERO SCENE (Three.js + GSAP) =================
+   gamefi.org-grade choreography (11s loop):
+   the OGT disc hovers TILTED above a glowing landing socket set into a
+   quadtree field of randomized voxels → levels out while descending →
+   DOCKS (pad bloom + squash + cube dip + camera kick on the same frame,
+   a radial WAVE boils through the voxels — inner field, raised border
+   and the flush perimeter band, breaking the cube's silhouette — then
+   spring-settles) → docked: seam glow breathes around the pad, live
+   tiles flicker → glow fades → disc lifts off and re-tilts. Rendered
+   through ACESFilmic + UnrealBloom with RoomEnvironment reflections
+   and real PCFSoft shadows. All randomness seeded (mulberry32).
+==================================================================== */
+      import * as THREE from "three";
+      import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
+      import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
+      import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
+      import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
+      import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
+
+      const CYAN = 0x13f5ef,
+        INK = 0x05080a;
+      const HALF = 1.7,
+        HOVER_H = 0.8,
+        REST_H = 0.012;
+      const PANEL = 1.32; // inner voxel field half-size
+      const BORDER_IN = 1.34,
+        BORDER_OUT = 1.56; // raised voxel border ring
+      const PERIM_IN = 1.58,
+        PERIM_OUT = 1.7; // flush band at the cube edge
+      const LOGO_R = 0.58,
+        PAD_R = LOGO_R + 0.1; // landing socket radius
+      const WAVE_SPEED = 1.8; // wavefront, world units / s
+      const prefersReduced = window.matchMedia(
+        "(prefers-reduced-motion: reduce)",
+      ).matches;
+
+      /* deterministic randomness — identical build every reload */
+      const mulberry32 = (seed) => {
+        let a = seed >>> 0;
+        return () => {
+          a = (a + 0x6d2b79f5) | 0;
+          let t = Math.imul(a ^ (a >>> 15), 1 | a);
+          t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+          return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+        };
+      };
+      const rand = mulberry32(1337);
+
+      /* ---------- renderer · tone mapping · post chain ---------- */
+      const canvas = document.getElementById("scene");
+      const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+      renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = 1.1;
+      renderer.outputColorSpace = THREE.SRGBColorSpace;
+      renderer.shadowMap.enabled = true;
+      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+      const scene = new THREE.Scene();
+
+      /* the pale sky lives in-scene (opaque canvas) so bloom composites over
+   it correctly — it mirrors the page's CSS radial-gradient background */
+      const bgCv = document.createElement("canvas");
+      bgCv.width = 1024;
+      bgCv.height = 640;
+      const bg = bgCv.getContext("2d");
+      bg.fillStyle = "#e9fbfa";
+      bg.fillRect(0, 0, 1024, 640);
+      const tint = (x, y, r, a) => {
+        const g = bg.createRadialGradient(x, y, 0, x, y, r);
+        g.addColorStop(0, `rgba(19,245,239,${a})`);
+        g.addColorStop(1, "rgba(19,245,239,0)");
+        bg.fillStyle = g;
+        bg.fillRect(0, 0, 1024, 640);
+      };
+      tint(0.78 * 1024, 0.42 * 640, 520, 0.1);
+      tint(0.12 * 1024, 0.9 * 640, 430, 0.08);
+      const bgTex = new THREE.CanvasTexture(bgCv);
+      bgTex.colorSpace = THREE.SRGBColorSpace;
+      scene.background = bgTex;
+
+      /* soft studio reflections, no HDR file needed */
+      const pmrem = new THREE.PMREMGenerator(renderer);
+      const envRT = pmrem.fromScene(new RoomEnvironment(), 0.04);
+      scene.environment = envRT.texture;
+      pmrem.dispose();
+
+      /* low, close, monumental */
+      const camera = new THREE.PerspectiveCamera(33, 1, 0.1, 100);
+      const CAM = new THREE.Vector3(0.6, 3.2, 7.0);
+      camera.position.copy(CAM);
+      const LOOK = new THREE.Vector3(0, 0.35, 0);
+
+      /* threshold sits above the pale sky's luminance (~0.93 linear) so only
+   genuinely hot emissive surfaces bloom, never the background */
+      const composer = new EffectComposer(renderer);
+      composer.setPixelRatio(Math.min(devicePixelRatio, 2));
+      composer.addPass(new RenderPass(scene, camera));
+      const bloom = new UnrealBloomPass(
+        new THREE.Vector2(innerWidth, innerHeight),
+        0.55,
+        0.7,
+        0.95,
+      );
+      composer.addPass(bloom);
+      composer.addPass(new OutputPass());
+
+      /* ---------- lighting rig ---------- */
+      scene.add(new THREE.HemisphereLight(0xe9fbfa, 0x0c1212, 0.3));
+      const key = new THREE.DirectionalLight(0xfff2e2, 2.2); // warm key, upper-left
+      key.position.set(-4.5, 8.5, 4);
+      key.castShadow = true;
+      key.shadow.mapSize.set(2048, 2048);
+      key.shadow.camera.near = 1;
+      key.shadow.camera.far = 26;
+      key.shadow.camera.left = -7;
+      key.shadow.camera.right = 7;
+      key.shadow.camera.top = 7;
+      key.shadow.camera.bottom = -7;
+      key.shadow.bias = -0.0006;
+      key.shadow.normalBias = 0.02;
+      scene.add(key);
+      const fill = new THREE.DirectionalLight(0xcfeef2, 0.5); // dim cool fill, camera side
+      fill.position.set(3, 2.5, 7.5);
+      scene.add(fill);
+      const rim = new THREE.PointLight(CYAN, 16, 30, 2); // cyan rim, low-right
+      rim.position.set(5.5, 0.8, 4.5);
+      scene.add(rim);
+
+      const rig = new THREE.Group();
+      rig.rotation.z = 0.1; // top side tilted left
+      scene.add(rig);
+      const cubeG = new THREE.Group();
+      cubeG.rotation.y = -0.62; // show top + two faces
+      rig.add(cubeG);
+
+      /* matte soot-black body — form drawn by light alone, no edge lines */
+      const cubeMat = new THREE.MeshStandardMaterial({
+        color: 0x0a0d0f,
+        roughness: 0.55,
+        metalness: 0.25,
+        envMapIntensity: 0.35,
+      });
+      const cube = new THREE.Mesh(
+        new THREE.BoxGeometry(HALF * 2, HALF * 2, HALF * 2),
+        cubeMat,
+      );
+      cube.castShadow = cube.receiveShadow = true;
+      cubeG.add(cube);
+
+      /* the floor shadow lives in-scene now */
+      const ground = new THREE.Mesh(
+        new THREE.PlaneGeometry(14, 14),
+        new THREE.ShadowMaterial({ opacity: 0.25 }),
+      );
+      ground.rotation.x = -Math.PI / 2;
+      ground.position.y = -HALF - 0.001;
+      ground.receiveShadow = true;
+      cubeG.add(ground);
+
+      /* ---------- voxel top surface ----------
+   quadtree subdivision of the panel → mixed tile sizes; a voxelized
+   border ring (zone 1) and a sparse flush perimeter band (zone 2)
+   whose wave heights break the cube's silhouette on impact.          */
+      const SHADES = [0x0a0d0f, 0x10151a, 0x141b1f, 0x0d1418].map((h) =>
+        new THREE.Color(h).convertSRGBToLinear(),
+      );
+      const pickShade = () => {
+        const r = rand();
+        return SHADES[r < 0.55 ? 0 : r < 0.75 ? 1 : r < 0.88 ? 2 : 3];
+      };
+
+      const gen = []; // build-time descriptors; baked into typed arrays below
+      const addVoxel = (x, z, sx, sz, rest, peak, zone) => {
+        const d = Math.hypot(x, z);
+        gen.push({
+          x,
+          z,
+          sx,
+          sz,
+          d,
+          rest,
+          peak,
+          tx: (rand() - 0.5) * (zone === 0 ? 0.105 : 0.07), // ≤ ~±3° wave tilt
+          tz: (rand() - 0.5) * (zone === 0 ? 0.105 : 0.07),
+          delay: Math.max(0, (d - PAD_R) / WAVE_SPEED) + rand() * 0.16,
+          live: zone < 2 && rand() < (zone === 0 ? 0.06 : 0.04),
+          shade: pickShade(),
+          fq: 1.6 + rand() * 2.6,
+          ph: rand() * Math.PI * 2,
+        });
+      };
+
+      const subdivide = (cx, cz, size, depth) => {
+        const nearPad = Math.hypot(cx, cz) - size * 0.71 < PAD_R; // hug the socket with small tiles
+        const stop = depth >= 2 ? 1 : depth === 0 ? 0.28 : 0.5;
+        if (!(nearPad && depth < 2) && rand() < stop) {
+          if (Math.hypot(cx, cz) < PAD_R + size * 0.6) return; // carve the socket
+          const g = size * (0.88 + rand() * 0.04); // 8–12% groove gap
+          addVoxel(cx, cz, g, g, 0.05 + rand() * 0.02, 0.08 + rand() * 0.2, 0);
+          return;
+        }
+        const q = size / 4;
+        subdivide(cx - q, cz - q, size / 2, depth + 1);
+        subdivide(cx + q, cz - q, size / 2, depth + 1);
+        subdivide(cx - q, cz + q, size / 2, depth + 1);
+        subdivide(cx + q, cz + q, size / 2, depth + 1);
+      };
+      const BASE = 5,
+        CELL = (PANEL * 2) / BASE;
+      for (let i = 0; i < BASE; i++)
+        for (let j = 0; j < BASE; j++)
+          subdivide(-PANEL + CELL * (i + 0.5), -PANEL + CELL * (j + 0.5), CELL, 0);
+
+      const fillStrip = (horizontal, fixed, from, to, width, zone) => {
+        let p = from;
+        while (to - p > 0.06) {
+          const seg = Math.min(to - p, 0.14 + rand() * 0.3);
+          const cx = horizontal ? p + seg / 2 : fixed;
+          const cz = horizontal ? fixed : p + seg / 2;
+          p += seg;
+          if (zone === 2 && rand() < 0.42) continue; // sparse silhouette band
+          const g = 0.9 + rand() * 0.04;
+          const hero = rand() < (zone === 1 ? 0.1 : 0.08);
+          const peak = hero
+            ? 0.55 + rand() * 0.15
+            : 0.2 + rand() * (zone === 1 ? 0.25 : 0.3);
+          const rest = zone === 1 ? 0.11 + rand() * 0.02 : 0.012 + rand() * 0.008;
+          addVoxel(
+            cx,
+            cz,
+            (horizontal ? seg : width) * g,
+            (horizontal ? width : seg) * g,
+            rest,
+            peak,
+            zone,
+          );
+        }
+      };
+      const BW = BORDER_OUT - BORDER_IN,
+        BC = (BORDER_IN + BORDER_OUT) / 2;
+      fillStrip(true, -BC, -BORDER_OUT, BORDER_OUT, BW, 1);
+      fillStrip(true, BC, -BORDER_OUT, BORDER_OUT, BW, 1);
+      fillStrip(false, -BC, -BORDER_IN, BORDER_IN, BW, 1);
+      fillStrip(false, BC, -BORDER_IN, BORDER_IN, BW, 1);
+      const PW = PERIM_OUT - PERIM_IN,
+        PC = (PERIM_IN + PERIM_OUT) / 2;
+      fillStrip(true, -PC, -PERIM_OUT, PERIM_OUT, PW, 2);
+      fillStrip(true, PC, -PERIM_OUT, PERIM_OUT, PW, 2);
+      fillStrip(false, -PC, -PERIM_IN, PERIM_IN, PW, 2);
+      fillStrip(false, PC, -PERIM_IN, PERIM_IN, PW, 2);
+
+      /* bake to typed arrays — dark instances first, live (emissive) last */
+      gen.sort((a, b) => (a.live ? 1 : 0) - (b.live ? 1 : 0));
+      const N = gen.length;
+      const darkN = gen.filter((v) => !v.live).length,
+        liveN = N - darkN;
+      const vX = new Float32Array(N),
+        vZ = new Float32Array(N);
+      const vSX = new Float32Array(N),
+        vSZ = new Float32Array(N);
+      const vRest = new Float32Array(N),
+        vPeak = new Float32Array(N);
+      const vTx = new Float32Array(N),
+        vTz = new Float32Array(N);
+      const vDelay = new Float32Array(N),
+        vDist = new Float32Array(N);
+      const vFq = new Float32Array(N),
+        vPh = new Float32Array(N);
+      const vEnv = new Float32Array(N);
+      gen.forEach((v, i) => {
+        vX[i] = v.x;
+        vZ[i] = v.z;
+        vSX[i] = v.sx;
+        vSZ[i] = v.sz;
+        vRest[i] = v.rest;
+        vPeak[i] = v.peak;
+        vTx[i] = v.tx;
+        vTz[i] = v.tz;
+        vDelay[i] = v.delay;
+        vDist[i] = v.d;
+        vFq[i] = v.fq;
+        vPh[i] = v.ph;
+      });
+
+      const boxGeo = new THREE.BoxGeometry(1, 1, 1);
+      boxGeo.translate(0, 0.5, 0); // pivot at the base so height scaling grows upward
+
+      const darkMat = new THREE.MeshStandardMaterial({
+        color: 0xffffff,
+        roughness: 0.52,
+        metalness: 0.22,
+        envMapIntensity: 0.35,
+      });
+      const darkMesh = new THREE.InstancedMesh(boxGeo, darkMat, darkN);
+      darkMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+      darkMesh.castShadow = darkMesh.receiveShadow = true;
+      darkMesh.frustumCulled = false;
+      for (let i = 0; i < darkN; i++) darkMesh.setColorAt(i, gen[i].shade);
+      cubeG.add(darkMesh);
+
+      /* live tiles: per-instance grayscale drives the cyan emissive */
+      const liveMat = new THREE.MeshStandardMaterial({
+        color: 0x0c1216,
+        roughness: 0.45,
+        metalness: 0.2,
+        emissive: CYAN,
+        emissiveIntensity: 1,
+        envMapIntensity: 0.3,
+      });
+      liveMat.onBeforeCompile = (s) => {
+        s.fragmentShader = s.fragmentShader
+          .replace("#include <color_fragment>", "")
+          .replace(
+            "#include <emissivemap_fragment>",
+            "#include <emissivemap_fragment>\n\ttotalEmissiveRadiance *= vColor;",
+          );
+      };
+      const liveMesh = new THREE.InstancedMesh(boxGeo, liveMat, liveN);
+      liveMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+      liveMesh.castShadow = liveMesh.receiveShadow = true;
+      liveMesh.frustumCulled = false;
+      const cTmp = new THREE.Color();
+      for (let i = 0; i < liveN; i++) liveMesh.setColorAt(i, cTmp.setScalar(0));
+      if (liveMesh.instanceColor)
+        liveMesh.instanceColor.setUsage(THREE.DynamicDrawUsage);
+      cubeG.add(liveMesh);
+
+      /* gutter floor — dark seam plane; a shader-driven radial emissive
+   bleeds cyan through the grooves: a travelling wavefront on impact
+   plus a pad-centred falloff glow while docked                       */
+      let floorU = null;
+      const floorMat = new THREE.MeshStandardMaterial({
+        color: 0x05080a,
+        roughness: 0.6,
+        metalness: 0.1,
+        envMapIntensity: 0.25,
+      });
+      floorMat.onBeforeCompile = (s) => {
+        s.uniforms.uWaveR = { value: 0 };
+        s.uniforms.uWaveI = { value: 0 };
+        s.uniforms.uGlow = { value: 0 };
+        floorU = s.uniforms;
+        s.vertexShader = s.vertexShader
+          .replace("#include <common>", "#include <common>\nvarying vec2 vPanel;")
+          .replace(
+            "#include <begin_vertex>",
+            "#include <begin_vertex>\nvPanel = position.xy;",
+          );
+        s.fragmentShader = s.fragmentShader
+          .replace(
+            "#include <common>",
+            "#include <common>\nvarying vec2 vPanel;\nuniform float uWaveR;\nuniform float uWaveI;\nuniform float uGlow;",
+          )
+          .replace(
+            "#include <emissivemap_fragment>",
+            [
+              "#include <emissivemap_fragment>",
+              "float pd = length(vPanel);",
+              "float front = exp(-pow((pd - uWaveR) / 0.3, 2.0));",
+              `float fall = exp(-max(pd - ${PAD_R.toFixed(3)}, 0.0) * 1.6);`,
+              "totalEmissiveRadiance += vec3(0.0065, 0.913, 0.863) * (uWaveI * front + uGlow * fall);",
+            ].join("\n"),
+          );
+      };
+      const floor = new THREE.Mesh(
+        new THREE.PlaneGeometry(PANEL * 2, PANEL * 2),
+        floorMat,
+      );
+      floor.rotation.x = -Math.PI / 2;
+      floor.position.y = HALF + 0.002;
+      floor.receiveShadow = true;
+      cubeG.add(floor);
+
+      /* ---------- landing socket: recessed pad + emissive cyan rings ---------- */
+      const padMat = new THREE.MeshStandardMaterial({
+        color: 0x07090b,
+        roughness: 0.5,
+        metalness: 0.3,
+        envMapIntensity: 0.3,
+      });
+      const pad = new THREE.Mesh(
+        new THREE.CylinderGeometry(PAD_R, PAD_R, 0.02, 48),
+        padMat,
+      );
+      pad.position.y = HALF - 0.002;
+      pad.receiveShadow = true;
+      cubeG.add(pad);
+      const ringMat = new THREE.MeshStandardMaterial({
+        color: 0x041212,
+        emissive: CYAN,
+        emissiveIntensity: 0.25,
+        roughness: 0.4,
+        metalness: 0.1,
+      });
+      const ring = new THREE.Mesh(
+        new THREE.TorusGeometry(PAD_R + 0.02, 0.013, 10, 72),
+        ringMat,
+      );
+      ring.rotation.x = -Math.PI / 2;
+      ring.position.y = HALF + 0.022;
+      cubeG.add(ring);
+      const ring2Mat = new THREE.MeshStandardMaterial({
+        color: 0x06090a,
+        emissive: CYAN,
+        emissiveIntensity: 0.1,
+        roughness: 0.5,
+      });
+      const ring2 = new THREE.Mesh(
+        new THREE.RingGeometry(PAD_R - 0.08, PAD_R - 0.05, 64),
+        ring2Mat,
+      );
+      ring2.rotation.x = -Math.PI / 2;
+      ring2.position.y = HALF + 0.01;
+      cubeG.add(ring2);
+      const padLight = new THREE.PointLight(CYAN, 0, 7, 2); // ignites at impact
+      padLight.position.set(0, HALF + 0.35, 0);
+      cubeG.add(padLight);
+
+      /* ---------- shape helpers ---------- */
+      function lensShape(hw, hh) {
+        const s = new THREE.Shape();
+        s.moveTo(0, -hh);
+        s.quadraticCurveTo(hw * 2, 0, 0, hh);
+        s.quadraticCurveTo(-hw * 2, 0, 0, -hh);
+        return s;
+      }
+      function ringShape(rOut, rIn) {
+        const s = new THREE.Shape();
+        s.absarc(0, 0, rOut, 0, Math.PI * 2, false);
+        if (rIn > 0) {
           const hole = new THREE.Path();
           hole.absarc(0, 0, rIn, 0, Math.PI * 2, true);
           s.holes.push(hole);
-          return s;
         }
-        function ellipseShape(rx, ry) {
-          const s = new THREE.Shape();
-          s.absellipse(0, 0, rx, ry, 0, Math.PI * 2, false, 0);
-          return s;
-        }
-        const matCyan = new THREE.MeshStandardMaterial({
-          color: CYAN,
-          roughness: 0.32,
-          metalness: 0.05,
-          emissive: 0x07c9c4,
-          emissiveIntensity: 0.45,
+        return s;
+      }
+      function ellipseShape(rx, ry) {
+        const s = new THREE.Shape();
+        s.absellipse(0, 0, rx, ry, 0, Math.PI * 2, false, 0);
+        return s;
+      }
+      function extrude(shape, depth, mat, z, bevel) {
+        const g = new THREE.ExtrudeGeometry(shape, {
+          depth,
+          bevelEnabled: !!bevel,
+          bevelThickness: 0.012,
+          bevelSize: 0.012,
+          bevelSegments: 2,
+          curveSegments: 48,
         });
-        const matInk = new THREE.MeshStandardMaterial({
-          color: INK,
-          roughness: 0.5,
-          metalness: 0.2,
-        });
-        function extrude(shape, depth, mat, z, bevel) {
-          const g = new THREE.ExtrudeGeometry(shape, {
-            depth,
-            bevelEnabled: !!bevel,
-            bevelThickness: 0.012,
-            bevelSize: 0.012,
-            bevelSegments: 2,
-            curveSegments: 48,
-          });
-          const m = new THREE.Mesh(g, mat);
-          m.position.z = z;
-          return m;
-        }
-        const logo = new THREE.Group();
-        const face = new THREE.Group(); // shapes live in XY, extrude +z
-        face.add(extrude(ringShape(1.0, 0), 0.1, matCyan, 0, true)); // cyan base disc
-        face.add(extrude(ringShape(0.64, 0.46), 0.04, matInk, 0.1)); // black ring
-        face.add(extrude(lensShape(0.135, 0.71), 0.04, matInk, 0.1)); // black gap lens
-        face.add(extrude(lensShape(0.095, 0.67), 0.055, matCyan, 0.102)); // cyan lens
-        face.add(extrude(ellipseShape(0.32, 0.106), 0.055, matInk, 0.104)); // black ellipse
-        face.rotation.x = -Math.PI / 2; // lay flat, face up
-        const SCALE = 0.92;
-        face.scale.setScalar(SCALE);
-        logo.add(face);
-        cubeG.add(logo);
+        const m = new THREE.Mesh(g, mat);
+        m.position.z = z;
+        return m;
+      }
 
-        /* contact shadow on the top face */
-        const shCv = document.createElement("canvas");
-        shCv.width = shCv.height = 128;
-        const sg = shCv.getContext("2d");
-        const grad = sg.createRadialGradient(64, 64, 4, 64, 64, 62);
-        grad.addColorStop(0, "rgba(0,8,8,.85)");
-        grad.addColorStop(1, "rgba(0,8,8,0)");
-        sg.fillStyle = grad;
-        sg.fillRect(0, 0, 128, 128);
-        const contact = new THREE.Mesh(
-          new THREE.PlaneGeometry(2.6, 2.6),
-          new THREE.MeshBasicMaterial({
-            map: new THREE.CanvasTexture(shCv),
-            transparent: true,
-            depthWrite: false,
-          }),
+      /* ---------- OGT disc, extruded 3D logo ----------
+   proportions measured from logo.jpeg (R = 1):
+   disc r=1.0 · ring 0.46→0.64 · lens hh=0.67 hw≈0.095 · ellipse 0.32×0.106 */
+      const matCyan = new THREE.MeshStandardMaterial({
+        color: CYAN,
+        roughness: 0.32,
+        metalness: 0.05,
+        emissive: 0x07c9c4,
+        emissiveIntensity: 0.55,
+        envMapIntensity: 0.5,
+      });
+      /* faint cyan fresnel rim so the disc pops against the pale sky */
+      matCyan.onBeforeCompile = (s) => {
+        s.fragmentShader = s.fragmentShader.replace(
+          "#include <emissivemap_fragment>",
+          [
+            "#include <emissivemap_fragment>",
+            "float fres = pow(1.0 - saturate(dot(normalize(vViewPosition), normalize(normal))), 3.0);",
+            "totalEmissiveRadiance += vec3(0.0065, 0.913, 0.863) * fres * 0.7;",
+          ].join("\n"),
         );
-        contact.rotation.x = -Math.PI / 2;
-        contact.position.y = HALF + 0.012;
-        cubeG.add(contact);
+      };
+      const matInk = new THREE.MeshStandardMaterial({
+        color: INK,
+        roughness: 0.5,
+        metalness: 0.2,
+        envMapIntensity: 0.4,
+      });
+      const logo = new THREE.Group();
+      const face = new THREE.Group(); // shapes live in XY, extrude +z
+      face.add(extrude(ringShape(1.0, 0), 0.1, matCyan, 0, true)); // cyan base disc
+      face.add(extrude(ringShape(0.64, 0.46), 0.04, matInk, 0.1)); // black ring
+      face.add(extrude(lensShape(0.135, 0.71), 0.04, matInk, 0.1)); // black gap lens
+      face.add(extrude(lensShape(0.095, 0.67), 0.055, matCyan, 0.102)); // cyan lens
+      face.add(extrude(ellipseShape(0.32, 0.106), 0.055, matInk, 0.104)); // black ellipse
+      face.rotation.x = -Math.PI / 2; // lay flat, face up
+      const SCALE = LOGO_R;
+      face.scale.setScalar(SCALE);
+      face.traverse((o) => {
+        if (o.isMesh) o.castShadow = true; // real contact shadow
+      });
+      logo.add(face);
+      cubeG.add(logo);
 
-        /* ---------- erosion voxels (top face breaks apart on touchdown) ---------- */
-        const VN = 15,
-          CELL = 0.205,
-          REGION = VN * CELL;
-        const vox = new THREE.InstancedMesh(
-          new THREE.BoxGeometry(CELL * 0.94, 1, CELL * 0.94),
-          new THREE.MeshStandardMaterial({
-            color: 0x0d1214,
-            roughness: 0.5,
-            metalness: 0.15,
-          }),
-          VN * VN,
+      /* ---------- impact wave envelope ----------
+   power3.out rise, then a damped spring settle with a soft undershoot */
+      const waveEnv = (lt) => {
+        if (lt <= 0) return 0;
+        if (lt < 0.22) {
+          const k = 1 - lt / 0.22;
+          return 1 - k * k * k;
+        }
+        const s = lt - 0.22;
+        const r = Math.cos(s * 9.0) * Math.exp(-s * 3.3);
+        return r < 0 ? r * 0.25 : r;
+      };
+
+      let waveAt = -1e9,
+        kickAt = -1e9;
+      const dummy = new THREE.Object3D();
+      const updateVoxels = (t) => {
+        const wt = t - waveAt;
+        const waving = wt > 0 && wt < 5;
+        for (let i = 0; i < N; i++) {
+          let e = 0;
+          if (waving) {
+            const lt = wt - vDelay[i];
+            e = waveEnv(lt) + 0.4 * waveEnv(lt - 0.5); // main + echo wave
+          }
+          vEnv[i] = e;
+          dummy.position.set(vX[i], HALF, vZ[i]);
+          dummy.rotation.set(vTx[i] * e, 0, vTz[i] * e);
+          dummy.scale.set(
+            vSX[i],
+            Math.max(0.006, vRest[i] + vPeak[i] * e),
+            vSZ[i],
+          );
+          dummy.updateMatrix();
+          if (i < darkN) darkMesh.setMatrixAt(i, dummy.matrix);
+          else liveMesh.setMatrixAt(i - darkN, dummy.matrix);
+        }
+        darkMesh.instanceMatrix.needsUpdate = true;
+        liveMesh.instanceMatrix.needsUpdate = true;
+      };
+      const updateLive = (t, gutter) => {
+        for (let i = darkN; i < N; i++) {
+          const idle = 0.22 + 0.18 * Math.sin(t * vFq[i] + vPh[i]);
+          const docked =
+            gutter *
+            (0.7 + 0.35 * Math.sin(t * 2.5 + vPh[i])) *
+            Math.exp(-Math.max(vDist[i] - PAD_R, 0) * 1.2);
+          const g = Math.max(0, idle + docked + Math.max(0, vEnv[i]) * 2.6);
+          liveMesh.setColorAt(i - darkN, cTmp.setScalar(g));
+        }
+        if (liveMesh.instanceColor) liveMesh.instanceColor.needsUpdate = true;
+      };
+
+      /* ---------- master timeline (11s loop) ---------- */
+      const st = { h: HOVER_H, gutter: 0 };
+      const clock = new THREE.Clock();
+      const tl = gsap.timeline({ repeat: -1, defaults: { overwrite: "auto" } });
+      tl.to(st, { h: HOVER_H + 0.05, duration: 0.35, ease: "sine.out" }, 0.55) // anticipation rise
+        .to(st, { h: REST_H, duration: 1.5, ease: "power2.inOut" }, 0.9) // descent → touchdown 2.4
+        .call(
+          () => {
+            waveAt = kickAt = clock.elapsedTime; // wave + camera kick, same frame
+          },
+          null,
+          2.4,
+        )
+        .to(
+          logo.scale,
+          { y: 0.92, x: 1.03, z: 1.03, duration: 0.1, ease: "power2.out" },
+          2.4,
+        ) // squash…
+        .to(
+          logo.scale,
+          { y: 1, x: 1, z: 1, duration: 0.55, ease: "elastic.out(1,.45)" },
+          2.5,
+        ) // …and stretch
+        .to(cubeG.position, { y: -0.04, duration: 0.1, ease: "power2.out" }, 2.4) // cube dips…
+        .to(
+          cubeG.position,
+          { y: 0, duration: 1.0, ease: "elastic.out(1,.35)" },
+          2.5,
+        ) // …and recovers
+        .to(st, { gutter: 1, duration: 0.9, ease: "sine.inOut" }, 4.1) // docked seam glow
+        .to(st, { gutter: 0, duration: 0.7, ease: "sine.inOut" }, 6.9) // glow fade
+        .to(st, { h: REST_H + 0.02, duration: 0.15, ease: "sine.inOut" }, 7.6) // unstick
+        .to(st, { h: HOVER_H, duration: 1.85, ease: "power3.inOut" }, 7.75) // lift off
+        .to({}, { duration: 0.01 }, 11.0); // loop length
+
+      if (prefersReduced) {
+        tl.pause(5.2); // static docked composition, pad lit
+      }
+
+      /* ---------- HTML reveals ---------- */
+      gsap.to(".reveal", {
+        opacity: 1,
+        y: 0,
+        duration: 0.9,
+        ease: "power3.out",
+        stagger: 0.09,
+        delay: 0.2,
+      });
+
+      /* ---------- responsive layout ----------
+   large screens: bigger box, pushed to the side, cropping slightly
+   off the bottom-right edge                                          */
+      function layout() {
+        const w = innerWidth,
+          h = innerHeight;
+        renderer.setSize(w, h);
+        composer.setSize(w, h);
+        camera.aspect = w / h;
+        camera.updateProjectionMatrix();
+        if (w > 1440) {
+          rig.position.set(2.35, -0.6, 0);
+          rig.scale.setScalar(1.2);
+        } else if (w > 1024) {
+          rig.position.set(2.0, -0.5, 0);
+          rig.scale.setScalar(1.08);
+        } else if (w > 640) {
+          rig.position.set(0, -0.95, 0);
+          rig.scale.setScalar(0.72);
+        } else {
+          rig.position.set(0, -1.1, 0);
+          rig.scale.setScalar(0.55);
+        }
+      }
+      addEventListener("resize", layout);
+      layout();
+
+      /* damped parallax */
+      let mx = 0,
+        my = 0,
+        pxs = 0,
+        pys = 0;
+      addEventListener("pointermove", (e) => {
+        mx = e.clientX / innerWidth - 0.5;
+        my = e.clientY / innerHeight - 0.5;
+      });
+
+      /* ---------- render loop ---------- */
+      let shown = false;
+      function frame() {
+        requestAnimationFrame(frame);
+        const dt = Math.min(clock.getDelta(), 0.05);
+        const t = clock.elapsedTime;
+
+        // disc height + hover bob (bob fades near the surface)
+        const air = THREE.MathUtils.clamp(
+          (st.h - REST_H) / (HOVER_H - REST_H),
+          0,
+          1,
         );
-        vox.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-        cubeG.add(vox);
-        const vdat = [];
-        for (let i = 0; i < VN; i++)
-          for (let j = 0; j < VN; j++) {
-            const x = (i - (VN - 1) / 2) * CELL,
-              z = (j - (VN - 1) / 2) * CELL;
-            const d = Math.hypot(x, z);
-            vdat.push({
-              x,
-              z,
-              d,
-              h: 0.1 + Math.random() * 0.58,
-              fall: Math.max(0, 1 - d / 1.55),
-              ph: Math.random() * Math.PI * 2,
-            });
-          }
-        const dummy = new THREE.Object3D();
-        function updateVoxels(t, e) {
-          for (let k = 0; k < vdat.length; k++) {
-            const v = vdat[k];
-            let h =
-              e * v.h * v.fall * (1 + Math.sin(t * 2.6 + v.ph) * 0.14 * e);
-            h = Math.max(0.0001, h);
-            dummy.position.set(v.x, HALF + h / 2 - 0.002, v.z);
-            dummy.scale.set(1, h, 1);
-            dummy.rotation.y = e * Math.sin(v.ph) * 0.12;
-            dummy.updateMatrix();
-            vox.setMatrixAt(k, dummy.matrix);
-          }
-          vox.instanceMatrix.needsUpdate = true;
-          vox.visible = e > 0.003;
-        }
-        updateVoxels(0, 0);
+        // tilt levels out only over the last ~third of the descent
+        const tilt = THREE.MathUtils.smoothstep(air, 0.06, 0.55);
+        logo.position.y = HALF + st.h + Math.sin(t * 1.5) * 0.06 * air;
+        logo.rotation.x = (0.42 + Math.sin(t * 0.8) * 0.05) * tilt; // ~24° toward camera
+        logo.rotation.z = (0.16 + Math.cos(t * 0.7) * 0.05) * tilt;
+        logo.rotation.y = Math.sin(t * 0.5) * 0.12 * tilt;
 
-        /* ---------- circuit lines with flowing juice ---------- */
-        const lineFrag = `
-    uniform float uTime, uProg;
-    uniform vec3 uColor;
-    varying vec2 vUv;
-    void main(){
-      if(vUv.x > uProg) discard;
-      float flow = pow(smoothstep(.25,0.,abs(fract(vUv.x*2.2 - uTime*.65)-.5)-.06), 2.);
-      float head = smoothstep(.12,0.,uProg - vUv.x);
-      vec3 col = uColor * (.45 + flow*1.5 + head*1.6);
-      gl_FragColor = vec4(col, 1.);
-    }`;
-        const lineVert = `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix*modelViewMatrix*vec4(position,1.); }`;
+        updateVoxels(t);
+        updateLive(t, st.gutter);
 
-        function snap8(a) {
-          return Math.round(a / (Math.PI / 4)) * (Math.PI / 4);
-        }
-        function makePath() {
-          // circuit walk across the top face; some spill over the edge for depth
-          const pts = [];
-          const a0 = Math.random() * Math.PI * 2;
-          let x = Math.cos(a0) * 0.55,
-            z = Math.sin(a0) * 0.55;
-          pts.push(new THREE.Vector3(x * 0.3, HALF, z * 0.3));
-          pts.push(new THREE.Vector3(x, HALF, z));
-          let ang = snap8(a0);
-          const segs = 2 + ((Math.random() * 3) | 0);
-          let escaped = null;
-          for (let s = 0; s < segs && !escaped; s++) {
-            const len = 0.5 + Math.random() * 1.0;
-            let nx = x + Math.cos(ang) * len,
-              nz = z + Math.sin(ang) * len;
-            if (Math.abs(nx) > HALF || Math.abs(nz) > HALF) {
-              // clamp to edge, remember which side we fell off
-              const tx =
-                Math.abs(nx) > HALF ? (HALF * Math.sign(nx) - x) / (nx - x) : 1;
-              const tz =
-                Math.abs(nz) > HALF ? (HALF * Math.sign(nz) - z) / (nz - z) : 1;
-              const tt = Math.min(tx, tz);
-              nx = x + (nx - x) * tt;
-              nz = z + (nz - z) * tt;
-              escaped =
-                tx < tz
-                  ? { axis: "x", sign: Math.sign(nx) }
-                  : { axis: "z", sign: Math.sign(nz) };
-            }
-            pts.push(new THREE.Vector3(nx, HALF, nz));
-            x = nx;
-            z = nz;
-            ang = snap8(ang + ((Math.random() < 0.5 ? -1 : 1) * Math.PI) / 4);
-          }
-          if (escaped) {
-            // run down the side face
-            const drop = 0.9 + Math.random() * 1.5;
-            const mid = new THREE.Vector3(x, HALF - drop * 0.5, z);
-            const end = new THREE.Vector3(x, HALF - drop, z);
-            if (escaped.axis === "x") {
-              mid.z += (Math.random() - 0.5) * 0.5;
-              end.z = mid.z;
-            } else {
-              mid.x += (Math.random() - 0.5) * 0.5;
-              end.x = mid.x;
-            }
-            pts.push(mid, end);
-          }
-          // lift slightly off the surfaces
-          const n = new THREE.Vector3();
-          return pts.map((p) => {
-            n.set(0, 0, 0);
-            if (Math.abs(p.y - HALF) < 0.01) n.y = 1;
-            if (Math.abs(Math.abs(p.x) - HALF) < 0.01) n.x = Math.sign(p.x);
-            if (Math.abs(Math.abs(p.z) - HALF) < 0.01) n.z = Math.sign(p.z);
-            n.normalize();
-            return p.clone().addScaledVector(n, 0.028);
-          });
-        }
-        const LINES = 14,
-          lineStates = [],
-          lineUniforms = [];
-        const linesG = new THREE.Group();
-        cubeG.add(linesG);
-        for (let i = 0; i < LINES; i++) {
-          const curve = new THREE.CatmullRomCurve3(
-            makePath(),
-            false,
-            "catmullrom",
-            0.08,
-          );
-          const geo = new THREE.TubeGeometry(curve, 110, 0.019, 6, false);
-          const uni = {
-            uTime: { value: 0 },
-            uProg: { value: 0 },
-            uColor: { value: new THREE.Color(CYAN) },
-          };
-          const mesh = new THREE.Mesh(
-            geo,
-            new THREE.ShaderMaterial({
-              uniforms: uni,
-              vertexShader: lineVert,
-              fragmentShader: lineFrag,
-            }),
-          );
-          linesG.add(mesh);
-          lineStates.push({ p: 0 });
-          lineUniforms.push(uni);
+        // landing pad: breath + anticipation (tied to disc height) + impact
+        // spike (caught by bloom) + docked glow
+        const dtw = t - waveAt;
+        const padI =
+          0.25 +
+          0.1 * Math.sin(t * 1.1) +
+          (1 - air) * (1 - air) * 0.85 +
+          (dtw > 0 ? 3.2 * Math.exp(-dtw * 10) : 0) +
+          st.gutter * (0.55 + 0.2 * Math.sin(t * 2.2));
+        ringMat.emissiveIntensity = padI;
+        ring2Mat.emissiveIntensity = 0.1 + padI * 0.3;
+        padLight.intensity = padI * 2.4;
+
+        // seam glow: expanding wavefront with distance falloff, then breathing
+        if (floorU) {
+          floorU.uWaveR.value = dtw > 0 ? PAD_R + dtw * WAVE_SPEED : 0;
+          floorU.uWaveI.value = dtw > 0 ? 1.7 * Math.exp(-dtw * 1.15) : 0;
+          floorU.uGlow.value = st.gutter * (0.8 + 0.3 * Math.sin(t * 2.3));
         }
 
-        /* ---------- master timeline ---------- */
-        const st = { h: HOVER_H, erosion: 0, shake: 0 };
-        const tl = gsap.timeline({
-          repeat: -1,
-          defaults: { overwrite: "auto" },
-        });
-        tl.to(st, { h: REST_H, duration: 1.5, ease: "power2.in" }, 0.8)
-          .to(
-            face.scale,
-            {
-              x: SCALE,
-              z: SCALE,
-              y: SCALE * 0.82,
-              duration: 0.12,
-              ease: "power2.out",
-            },
-            2.3,
-          ) // squash
-          .to(
-            face.scale,
-            { y: SCALE, duration: 0.4, ease: "elastic.out(1,.45)" },
-            2.42,
-          )
-          .to(st, { shake: 1, duration: 0.06 }, 2.3)
-          .to(st, { shake: 0, duration: 0.55, ease: "power2.out" }, 2.36)
-          .to(st, { erosion: 1, duration: 0.7, ease: "expo.out" }, 2.3)
-          .to(under, { intensity: 1.6, duration: 0.3 }, 2.3)
-          .add(
-            gsap.to(lineStates, {
-              p: 1,
-              duration: 1.0,
-              ease: "power3.out",
-              stagger: 0.055,
-            }),
-            2.4,
-          )
-          .add(
-            gsap.to(lineStates, {
-              p: 0,
-              duration: 0.65,
-              ease: "power2.in",
-              stagger: 0.035,
-            }),
-            6.0,
-          )
-          .to(under, { intensity: 0, duration: 0.6 }, 6.2)
-          .to(st, { erosion: 0, duration: 0.9, ease: "power3.inOut" }, 6.35)
-          .to(st, { h: HOVER_H, duration: 1.7, ease: "power3.out" }, 7.1) // launch
-          .to({}, { duration: 0.01 }, 10.55); // loop length
+        // camera: damped parallax + slow idle drift + damped impact kick
+        const damp = 1 - Math.exp(-dt * 4);
+        pxs += (mx * 0.5 - pxs) * damp;
+        pys += (my * 0.35 - pys) * damp;
+        let kick = 0;
+        const kd = t - kickAt;
+        if (kd > 0 && kd < 0.8)
+          kick = Math.sin(kd * 26) * Math.exp(-kd * 7.5) * 0.05;
+        camera.position.set(
+          CAM.x + pxs + Math.sin(t * 0.1) * 0.05 + kick * 0.35,
+          CAM.y - pys + Math.sin(t * 0.13 + 1.3) * 0.04 + kick,
+          CAM.z,
+        );
+        camera.lookAt(LOOK);
 
-        if (prefersReduced) {
-          tl.pause(4.5); // static resting composition
+        composer.render();
+        if (!shown) {
+          canvas.classList.add("on");
+          shown = true;
         }
-
-        /* ---------- HTML reveals ---------- */
-        gsap.to(".reveal", {
-          opacity: 1,
-          y: 0,
-          duration: 0.9,
-          ease: "power3.out",
-          stagger: 0.09,
-          delay: 0.2,
-        });
-
-        /* ---------- responsive layout ---------- */
-        function layout() {
-          const w = innerWidth,
-            h = innerHeight;
-          renderer.setSize(w, h);
-          camera.aspect = w / h;
-          camera.updateProjectionMatrix();
-          if (w > 1024) {
-            rig.position.x = 2.25;
-            rig.position.y = -0.1;
-            rig.scale.setScalar(1);
-          } else if (w > 640) {
-            rig.position.x = 0;
-            rig.position.y = -0.9;
-            rig.scale.setScalar(0.85);
-          } else {
-            rig.position.x = 0;
-            rig.position.y = -1.25;
-            rig.scale.setScalar(0.66);
-          }
-        }
-        addEventListener("resize", layout);
-        layout();
-
-        /* subtle parallax */
-        let mx = 0,
-          my = 0;
-        addEventListener("pointermove", (e) => {
-          mx = e.clientX / innerWidth - 0.5;
-          my = e.clientY / innerHeight - 0.5;
-        });
-
-        /* ---------- render loop ---------- */
-        const clock = new THREE.Clock();
-        let shown = false;
-        function frame() {
-          requestAnimationFrame(frame);
-          const t = clock.getElapsedTime();
-
-          // logo height + hover bob (bob fades near the surface)
-          const air = Math.min(
-            1,
-            Math.max(0, (st.h - REST_H) / (HOVER_H - REST_H)),
-          );
-          const bob = Math.sin(t * 1.6) * 0.07 * air;
-          logo.position.y = HALF + st.h + bob;
-          logo.rotation.y = Math.sin(t * 0.55) * 0.08 * air;
-          logo.rotation.x = Math.sin(t * 0.8) * 0.025 * air;
-          logo.rotation.z = Math.cos(t * 0.7) * 0.025 * air;
-
-          // contact shadow tracks height
-          contact.material.opacity = 0.62 * (1 - air * 0.92);
-          const cs = 1.15 + air * 1.1;
-          contact.scale.set(cs, cs, 1);
-
-          under.position.set(rig.position.x, HALF * 0.5, 1.5);
-
-          updateVoxels(t, st.erosion);
-          for (let i = 0; i < LINES; i++) {
-            lineUniforms[i].uProg.value = lineStates[i].p;
-            lineUniforms[i].uTime.value = t;
-          }
-
-          // camera: micro parallax + touchdown shake
-          const shk = st.shake;
-          camera.position.x = mx * 0.45 + (Math.random() - 0.5) * 0.16 * shk;
-          camera.position.y =
-            3.0 - my * 0.35 + (Math.random() - 0.5) * 0.14 * shk;
-          camera.lookAt(LOOK);
-
-          renderer.render(scene, camera);
-          if (!shown) {
-            canvas.classList.add("on");
-            shown = true;
-          }
-        }
-        frame();
-      })();
+      }
+      frame();
     </script>
   </body>
 </html>
